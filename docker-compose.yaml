@@ -8,8 +8,7 @@ services:
   # WEB SERVER
   nginx:
     build:
-      context: .
-      dockerfile: dockerfiles/nginx.dockerfile
+      context: dockerfiles/nginx
     container_name: web_server
     ports:
       - '8000:80'
@@ -25,10 +24,9 @@ services:
 
   # LANGUAGE FOR WEB DEVELOPMENT
   php:
-    container_name: php
     build:
-      context: .
-      dockerfile: dockerfiles/php.dockerfile
+      context: dockerfiles/php-fpm
+    container_name: php
     volumes:
       - ./src:/var/www/html
     networks:
@@ -36,32 +34,27 @@ services:
 
   # RELATIONAL DATABASE MANAGEMENT SYSTEM
   mysql:
-    image: mysql:latest
+    build:
+      context: dockerfiles/mysql
     container_name: mysql
+    restart: unless-stopped
+    tty: true
     env_file:
       - ./env/mysql.env
     volumes:
-      - ./mysql:/var/liv/mysql
+      - ./data/mysql:/var/lib/mysql
     ports:
       - "3306:3306"
     networks:
       - backend
 
+  # MYSQL DATABASE MANAGEMENT SOFTWARE
   phpmyadmin:
     build:
-      context: .
-      dockerfile: dockerfiles/phpmyadmin.dockerfile
+      context: dockerfiles/phpmyadmin
+    container_name: phpmyadmin
     env_file:
       - ./env/phpmyadmin.env
-
-#    environment:
-#      - PMA_ARBITRARY=1
-#      - MYSQL_USER=homestead
-#      - MYSQL_PASSWORD=secret
-#      - MYSQL_ROOT_PASSWORD=secret
-#      - MAX_EXECUTION_TIME=600
-#      - MEMORY_LIMIT=256M
-#      - UPLOAD_LIMIT=2G
     ports:
       - "8081:80"
     depends_on:
@@ -69,6 +62,34 @@ services:
     networks:
       - backend
 
+  # IN-MEMORY DATA STRUCTURE STORE, DATABASE, CACHE AND MESSAGE BROKER.
+  redis:
+    build:
+      context: dockerfiles/redis
+    container_name: redis
+    volumes:
+      - ./data/redis:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
+  # REDIS MANAGEMENT SOFTWARE
+  redis-webui:
+    build:
+      context: dockerfiles/redis-webui
+    container_name: redis-webui
+    environment:
+      - ADMIN_USER=root
+      - ADMIN_PASS=root
+      - REDIS_1_HOST=redis
+      - REDIS_1_PORT=6379
+    networks:
+      - backend
+    ports:
+      - "9987:80"
+    depends_on:
+      - redis
 
   # DEPENDENCY MANAGER FOR JAVASCRIPT
   npm:
@@ -82,11 +103,11 @@ services:
     networks:
       - backend
 
+  # DEPENDENCY MANAGER FOR PHP
   composer:
     container_name: composer
     build:
-      context: dockerfiles
-      dockerfile: composer.dockerfile
+      context: dockerfiles/composer
     volumes:
       - ./src:/var/www/html
     networks:
@@ -97,10 +118,54 @@ services:
     container_name: artisan
     build:
       context: .
-      dockerfile: dockerfiles/php.dockerfile
+      dockerfile: dockerfiles/php-fpm/php.dockerfile
     volumes:
       - ./src:/var/www/html
     entrypoint: [ "php","/var/www/html/artisan" ]
     networks:
       - backend
 
+  # FULL TEXT SEARCH ENGINE
+  elasticsearch:
+    build:
+      context: dockerfiles/elasticsearch
+    container_name: elasticsearch
+    volumes:
+      - elasticsearch:/usr/share/elasticsearch/data
+
+    environment:
+      - cluster.name=project-cluster
+      - node.name=project-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.initial_master_nodes=project-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    depends_on:
+      - php
+    networks:
+      - backend
+
+  # Laravel Echo Server
+  laravel-echo-server:
+    build:
+      context: dockerfiles/laravel-echo-server
+      args:
+        - CHANGE_SOURCE=${CHANGE_SOURCE}
+    container_name : laravel-echo-server
+    volumes:
+      - ./laravel-echo-server/laravel-echo-server.json:/app/laravel-echo-server.json:ro
+    ports:
+      - "6001:6001"
+    links:
+      - redis
+    networks:
+      - backend
