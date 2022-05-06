@@ -40,8 +40,35 @@ services:
     container_name: mysql
     env_file:
       - ./env/mysql.env
+    volumes:
+      - ./mysql:/var/liv/mysql
+    ports:
+      - "3306:3306"
     networks:
       - backend
+
+  phpmyadmin:
+    build:
+      context: .
+      dockerfile: dockerfiles/phpmyadmin.dockerfile
+    env_file:
+      - ./env/phpmyadmin.env
+
+#    environment:
+#      - PMA_ARBITRARY=1
+#      - MYSQL_USER=homestead
+#      - MYSQL_PASSWORD=secret
+#      - MYSQL_ROOT_PASSWORD=secret
+#      - MAX_EXECUTION_TIME=600
+#      - MEMORY_LIMIT=256M
+#      - UPLOAD_LIMIT=2G
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+    networks:
+      - backend
+
 
   # DEPENDENCY MANAGER FOR JAVASCRIPT
   npm:
@@ -51,8 +78,7 @@ services:
     entrypoint: [ "npm" ]
     volumes:
       - ./src:/var/www/html
-      -
-  # DEPENDENCY MANAGER FOR PHP
+    # DEPENDENCY MANAGER FOR PHP
     networks:
       - backend
 
