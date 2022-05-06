@@ -1,0 +1,12 @@
+* text=auto
+
+*.blade.php diff=html
+*.css diff=css
+*.html diff=html
+*.md diff=markdown
+*.php diff=php
+*.yaml diff=yaml
+*.dockerfile diff=dockerfile
+
+/.github export-ignore
+CHANGELOG.md export-ignore
