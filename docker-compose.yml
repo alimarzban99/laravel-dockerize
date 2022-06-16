@@ -1,0 +1,232 @@
+version: "3.8"
+
+networks:
+  backend:
+    driver: bridge
+
+services:
+
+  # WEB SERVER
+  nginx:
+    build:
+      context: ./dockerfiles/nginx
+    container_name: nginx
+    restart: unless-stopped
+    tty: true
+    ports:
+      - '8000:80'
+      - '80:80'
+    volumes:
+      - ./src:/var/www/html:delegated
+    depends_on:
+      - php
+      - mariadb
+    networks:
+      - backend
+
+  # LANGUAGE FOR WEB DEVELOPMENT
+  php:
+    build:
+      context: ./dockerfiles/php-fpm
+    container_name: php_container
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./src:/var/www/html
+    networks:
+      - backend
+
+  # PHP WORKER RUN SUPERVISORD
+  php-worker:
+    build:
+      context: ./dockerfiles/php-worker
+    container_name: php_worker
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./src:/var/www/html
+      - ./dockerfiles/php-worker/supervisord.d:/etc/supervisord.d
+    networks:
+      - backend
+
+  # RELATIONAL DATABASE MANAGEMENT SYSTEM
+  #  mysql:
+  #    build:
+  #      context: ./dockerfiles/mysql
+  #    container_name: mysql
+  #    restart: unless-stopped
+  #    tty: true
+  #    env_file:
+  #      - ./env/mysql.env
+  #    volumes:
+  #      - ./data/mysql:/var/lib/mysql
+  #    ports:
+  #      - "3306:3306"
+  #    networks:
+  #      - backend
+
+  # RELATIONAL DATABASE MANAGEMENT SYSTEM
+  mariadb:
+    build:
+      context: ./dockerfiles/mariadb
+    container_name: mariadb
+    restart: unless-stopped
+    tty: true
+    volumes:
+      - ./data/mariadb:/var/lib/mysql
+      - ./dockerfiles/mariadb/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    env_file:
+      - ./env/mariadb.env
+    networks:
+      - backend
+
+  # MYSQL DATABASE MANAGEMENT SOFTWARE
+  phpmyadmin:
+    build:
+      context: ./dockerfiles/phpmyadmin
+    container_name: phpmyadmin
+    env_file:
+      - ./env/phpmyadmin.env
+    ports:
+      - "8081:80"
+    depends_on:
+      - mariadb
+    networks:
+      - backend
+
+  # IN-MEMORY DATA STRUCTURE STORE, DATABASE, CACHE AND MESSAGE BROKER.
+  redis:
+    build:
+      context: ./dockerfiles/redis
+    container_name: redis
+    restart: unless-stopped
+    volumes:
+      - ./data/redis:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+
+  # REDIS MANAGEMENT SOFTWARE
+  redis-webui:
+    build:
+      context: ./dockerfiles/redis-webui
+    container_name: redis-webui
+    environment:
+      - ADMIN_USER=root
+      - ADMIN_PASS=root
+      - REDIS_1_HOST=redis
+      - REDIS_1_PORT=6379
+    networks:
+      - backend
+    ports:
+      - "9987:80"
+    depends_on:
+      - redis
+
+  # DEPENDENCY MANAGER FOR JAVASCRIPT
+  npm:
+    image: node:latest
+    container_name: npm
+    working_dir: /var/www/html
+    entrypoint: [ "npm" ]
+    volumes:
+      - ./src:/var/www/html
+    # DEPENDENCY MANAGER FOR PHP
+    networks:
+      - backend
+
+  # DEPENDENCY MANAGER FOR PHP
+  composer:
+    container_name: composer
+    build:
+      context: ./dockerfiles/composer
+    volumes:
+      - ./src/:/var/www/html
+    networks:
+      - backend
+    depends_on:
+      - php
+
+  # COMMAND LINE INTERFACE
+  artisan:
+    container_name: artisan
+    build:
+      context: ./dockerfiles/php-fpm
+    volumes:
+      - ./src:/var/www/html
+    entrypoint: [ "php", "/var/www/html/pb9/artisan" ]
+    networks:
+      - backend
+    depends_on:
+      - php
+
+  # FULL TEXT SEARCH ENGINE
+  elasticsearch:
+    build:
+      context: ./dockerfiles/elasticsearch
+    container_name: elasticsearch
+    restart: unless-stopped
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/config/certs
+    environment:
+      - cluster.name=PB-cluster
+      - node.name=pezeshkBook
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.initial_master_nodes=PB-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    depends_on:
+      - php
+    networks:
+      - backend
+
+  # KIBANA IS A DASHBOARD SOFTWARE FOR ELASTICSEARCH
+  kibana:
+    build:
+      context: ./dockerfiles/kibana
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - backend
+
+  # Laravel Echo Server
+  laravel-echo-server:
+    build:
+      context: ./dockerfiles/laravel-echo-server
+    container_name: laravel_echo_server
+    restart: unless-stopped
+    volumes:
+      - ./dockerfiles/laravel-echo-server/laravel-echo-server.json:/app/laravel-echo-server.json:ro
+    ports:
+      - "2096:2096"
+    links:
+      - redis
+    networks:
+      - backend
+
+  # PORTAINER IS CONTAINER MANAGEMENT PLATFORM
+  portainer:
+    container_name: portainer
+    build:
+      context: ./dockerfiles/portainer
+    volumes:
+      - ./data/portainer_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9010:9000"
+    networks:
+      - backend
